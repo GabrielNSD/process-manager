@@ -12,11 +12,15 @@ struct Process {
     process_name: String,
     cpu_usage: f32,
     memory_usage: u64,
+    user: String,
+    threads_used: u32,
 }
 
 struct ProcessUsage {
     cpu_usage: f32,
     memory_usage: u64,
+    user: String,
+    threads_used: u32,
 }
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
@@ -42,7 +46,7 @@ fn list_processes() -> String {
 
 fn get_process_usage(process_id: i32) -> Option<ProcessUsage> {
     let cpu_usage_path = format!("/proc/{}/stat", process_id);
-    let memory_usage_path = format!("/proc/{}/status", process_id);
+    let status_file_path = format!("/proc/{}/status", process_id);
 
     let cpu_usage = fs::read_to_string(cpu_usage_path)
         .ok()?
@@ -51,8 +55,11 @@ fn get_process_usage(process_id: i32) -> Option<ProcessUsage> {
         .parse::<u64>()
         .ok()?;
 
-    let memory_usage = fs::read_to_string(memory_usage_path)
-        .ok()?
+    let cpu_usage_percentage = cpu_usage as f32 / 100.0;
+
+    let status_content = fs::read_to_string(status_file_path).ok()?;
+
+    let memory_usage = status_content
         .lines()
         .find(|line| line.starts_with("VmRSS:"))?
         .split_whitespace()
@@ -60,11 +67,35 @@ fn get_process_usage(process_id: i32) -> Option<ProcessUsage> {
         .parse::<u64>()
         .ok()?;
 
-    let cpu_usage_percentage = cpu_usage as f32 / 100.0;
+    let uid_line = status_content
+        .lines()
+        .find(|line| line.starts_with("Uid:"))?;
+
+    let uid = uid_line.split_whitespace().nth(1)?.parse::<u32>().ok()?;
+
+    let mut user_name = String::new();
+
+    let user = nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(uid)).ok()?;
+
+    if let Some(user) = user {
+        user_name = user.name.to_string();
+    }
+
+    let threads_line = status_content
+        .lines()
+        .find(|line| line.starts_with("Threads:"))?;
+
+    let threads_used = threads_line
+        .split_whitespace()
+        .nth(1)?
+        .parse::<u32>()
+        .ok()?;
 
     Some(ProcessUsage {
         cpu_usage: cpu_usage_percentage,
         memory_usage,
+        user: user_name,
+        threads_used,
     })
 }
 
@@ -90,6 +121,8 @@ fn read_running_processes() -> Vec<Process> {
                                             process_name: comm.trim().to_string(),
                                             cpu_usage: usages.cpu_usage,
                                             memory_usage: usages.memory_usage,
+                                            user: usages.user,
+                                            threads_used: usages.threads_used,
                                         };
                                         processes.push(process);
                                     }
@@ -106,10 +139,11 @@ fn read_running_processes() -> Vec<Process> {
 }
 
 #[tauri::command]
-fn send_process_signal(pid: &str) -> String {
+fn send_process_signal(signal: &str, pid: &str) -> String {
     println!("PID IN RUST {}", pid);
 
     let child = Command::new("kill")
+        .arg(format!("-{}", signal))
         .arg(pid)
         .stdout(Stdio::piped())
         .spawn()
@@ -124,10 +158,12 @@ fn send_process_signal(pid: &str) -> String {
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![greet])
-        .invoke_handler(tauri::generate_handler![list_processes])
-        .invoke_handler(tauri::generate_handler![read_running_processes])
-        .invoke_handler(tauri::generate_handler![send_process_signal])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            list_processes,
+            read_running_processes,
+            send_process_signal
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
