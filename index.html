@@ -14,44 +14,45 @@
       .logo.typescript:hover {
         filter: drop-shadow(0 0 2em #2d79c7);
       }
+
+      table {
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        border: 1px solid black;
+        padding: 8px;
+      }
+
+      thead {
+        position: sticky;
+        top: 0;
+      }
+
+      tbody {
+        display: block;
+        height: 200px;
+        overflow-y: scroll;
+      }
     </style>
   </head>
 
   <body>
     <div class="container">
-      <h1>Welcome to Tauri!</h1>
-
-      <div class="row">
-        <a href="https://vitejs.dev" target="_blank">
-          <img src="/src/assets/vite.svg" class="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img
-            src="/src/assets/tauri.svg"
-            class="logo tauri"
-            alt="Tauri logo"
-          />
-        </a>
-        <a href="https://www.typescriptlang.org/docs" target="_blank">
-          <img
-            src="/src/assets/typescript.svg"
-            class="logo typescript"
-            alt="typescript logo"
-          />
-        </a>
-      </div>
-
-      <p>Click on the Tauri logo to learn more about the framework</p>
-
-      <form class="row" id="greet-form">
-        <input id="greet-input" placeholder="Enter a name..." />
-        <button type="submit">Greet</button>
-      </form>
-
-      <p id="greet-msg"></p>
-
-      <button id="test-btn" type="button">Test</button>
-      <p id="test-msg"></p>
+      <table>
+        <thead>
+          <tr>
+            <th>Nome do Processo</th>
+            <th>%CPU</th>
+            <th>Tempo de execução</th>
+            <th>Threads</th>
+            <th>PID</th>
+            <th>Usuário</th>
+          </tr>
+        </thead>
+        <tbody id="process-list"></tbody>
+      </table>
 
       <form class="row">
         <input id="pid-input" placeholder="Enter a pid..." />
@@ -59,6 +60,20 @@
         <button id="stop-btn" type="button">Stop</button>
         <button id="cont-btn" type="button">Cont</button>
       </form>
+
+      <form class="row">
+        <input id="priority-input" placeholder="Enter a priority..." />
+        <button id="priority-btn" type="button">Priority</button>
+      </form>
+
+      <form class="row">
+        <input id="cpu-input" placeholder="Enter a cpu..." />
+        <button id="cpu-btn" type="button">CPU</button>
+      </form>
+
+      <form class="row">
+        <input id="filter-input" placeholder="Enter a filter..." />
+        <button id="filter-btn" type="button">Filter</button>
     </div>
   </body>
 </html>

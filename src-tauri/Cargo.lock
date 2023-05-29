@@ -1930,6 +1930,7 @@ dependencies = [
 name = "process-manager"
 version = "0.0.0"
 dependencies = [
+ "libc",
  "nix",
  "serde",
  "serde_json",
