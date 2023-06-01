@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/tauri";
+import { Grid, GridOptions } from "ag-grid-community";
 
 let greetInputEl: HTMLInputElement | null;
 let greetMsgEl: HTMLElement | null;
@@ -11,10 +12,9 @@ let priorityInputEl: HTMLInputElement | null;
 let priorityBtnEl: HTMLElement | null;
 let cpuInputEl: HTMLInputElement | null;
 let cpuBtnEl: HTMLElement | null;
-let processListEl: HTMLElement | null;
 let filterInputEl: HTMLInputElement | null;
 
-let testMsgEl: HTMLElement | null;
+let gridObject: Grid | null = null;
 
 async function greet() {
   if (greetMsgEl && greetInputEl) {
@@ -23,20 +23,6 @@ async function greet() {
       name: greetInputEl.value,
     });
   }
-}
-
-async function test() {
-  if (testMsgEl) {
-    console.log("invoking test");
-    const list = await invoke("send_process_signal", { pid: "122780" });
-    console.log(list);
-  }
-}
-
-async function getRunningProcesses() {
-  // const list = await invoke("read_running_processes", {});
-  // console.log(list);
-  // setTimeout(getRunningProcesses, 1000);
 }
 
 async function sendSignal(signal: string) {
@@ -79,50 +65,33 @@ type Process = {
   threads_used: number;
 };
 
-async function renderList() {
-  if (processListEl && filterInputEl) {
+const columnDefs = [
+  { field: "process_id" },
+  { field: "process_name" },
+  { field: "cpu_usage" },
+  { field: "memory_usage" },
+  { field: "user" },
+  { field: "threads_used" },
+];
+
+let rowData: Process[] = [];
+
+const gridOptions: GridOptions = {
+  columnDefs: columnDefs,
+  rowData: rowData,
+  rowSelection: "single",
+  animateRows: true,
+  getRowId: (params) => params.data.id,
+  defaultColDef: { sortable: true },
+};
+
+async function updateRowData() {
+  if (filterInputEl) {
     const list: Process[] = await invoke("read_running_processes", {});
-    processListEl.innerHTML = "";
+    const formattedList = list.map((el) => ({ ...el, id: el.process_id }));
+    gridOptions.api?.setRowData(formattedList);
 
-    list
-      .filter((el) =>
-        filterInputEl?.value
-          ? JSON.stringify(el)
-              .toLowerCase()
-              .includes(filterInputEl.value.toLowerCase())
-          : true
-      )
-      .forEach((process) => {
-        const row = document.createElement("tr");
-        const pid = document.createElement("td");
-        const name = document.createElement("td");
-        const cpu = document.createElement("td");
-        const memory = document.createElement("td");
-        const user = document.createElement("td");
-        const threads = document.createElement("td");
-        const executionTime = document.createElement("td");
-
-        pid.textContent = process.process_id;
-        name.textContent = process.process_name;
-        executionTime.textContent = "0";
-        cpu.textContent = process.cpu_usage.toFixed(4);
-        memory.textContent = process.memory_usage.toString();
-        user.textContent = process.user;
-        threads.textContent = process.threads_used.toString();
-
-        row.appendChild(name);
-        row.appendChild(cpu);
-        row.appendChild(executionTime);
-        row.appendChild(threads);
-        row.appendChild(memory);
-
-        row.appendChild(pid);
-        row.appendChild(user);
-
-        processListEl?.appendChild(row);
-      });
-
-    setTimeout(renderList, 1000);
+    setTimeout(updateRowData, 1000);
   }
 }
 
@@ -135,16 +104,8 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   filterInputEl = document.querySelector("#filter-input");
-  processListEl = document.querySelector("#process-list");
 
-  renderList();
-
-  testMsgEl = document.querySelector("#test-msg");
-  document.querySelector("#test-btn")?.addEventListener("click", (e) => {
-    console.log("submitting");
-    e.preventDefault();
-    test();
-  });
+  updateRowData();
 
   pidInputEl = document.querySelector("#pid-input");
   killBtnEl = document.querySelector("#kill-btn");
@@ -154,6 +115,9 @@ window.addEventListener("DOMContentLoaded", () => {
   priorityBtnEl = document.querySelector("#priority-btn");
   cpuInputEl = document.querySelector("#cpu-input");
   cpuBtnEl = document.querySelector("#cpu-btn");
+
+  const gridDiv = document.querySelector("#myGrid");
+  gridObject = new Grid(gridDiv as HTMLElement, gridOptions);
 
   document.querySelector("#kill-btn")?.addEventListener("click", (e) => {
     e.preventDefault();

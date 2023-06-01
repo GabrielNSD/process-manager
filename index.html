@@ -5,6 +5,7 @@
     <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tauri App</title>
+    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js"></script>
     <script type="module" src="/src/main.ts" defer></script>
     <style>
       .logo.vite:hover {
@@ -16,6 +17,7 @@
       }
 
       table {
+        width: 100%;
         border-collapse: collapse;
       }
 
@@ -33,6 +35,7 @@
       tbody {
         display: block;
         height: 200px;
+        flex: 1 1 auto;
         overflow-y: scroll;
       }
     </style>
@@ -40,7 +43,7 @@
 
   <body>
     <div class="container">
-      <table>
+      <!-- <table>
         <thead>
           <tr>
             <th>Nome do Processo</th>
@@ -52,7 +55,9 @@
           </tr>
         </thead>
         <tbody id="process-list"></tbody>
-      </table>
+      </table> -->
+      <div id="myGrid" style="height: 400px; width:100%;" class="ag-theme-alpine-dark"></div>
+
 
       <form class="row">
         <input id="pid-input" placeholder="Enter a pid..." />

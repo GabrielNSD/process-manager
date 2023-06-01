@@ -3,11 +3,13 @@ lockfileVersion: 5.4
 specifiers:
   '@tauri-apps/api': ^1.3.0
   '@tauri-apps/cli': ^1.3.1
+  ag-grid-community: ^29.3.5
   typescript: ^4.8.2
   vite: ^4.2.1
 
 dependencies:
   '@tauri-apps/api': 1.3.0
+  ag-grid-community: 29.3.5
 
 devDependencies:
   '@tauri-apps/cli': 1.3.1
@@ -315,6 +317,10 @@ packages:
       '@tauri-apps/cli-win32-ia32-msvc': 1.3.1
       '@tauri-apps/cli-win32-x64-msvc': 1.3.1
     dev: true
+
+  /ag-grid-community/29.3.5:
+    resolution: {integrity: sha512-LxUo21f2/CH31ACEs1C7Q/ggGGI1fQPSTB4aY5OThmM+lBkygZ7QszBE8jpfgWOIjvjdtcdIeQbmbjkHeMsA7A==}
+    dev: false
 
   /esbuild/0.17.19:
     resolution: {integrity: sha512-XQ0jAPFkK/u3LcVRcvVHQcTIqD6E2H1fvZMA5dQPSOWb3suUbWbfbRf94pjc0bNzRYLfIrDRQXr7X+LHIm5oHw==}
