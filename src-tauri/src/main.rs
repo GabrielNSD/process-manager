@@ -5,9 +5,12 @@ use libc::{
     c_int, cpu_set_t, pid_t, sched_setaffinity, setpriority, CPU_SET, CPU_SETSIZE, PRIO_PROCESS,
 };
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs;
 use std::process::{Command, Stdio};
 use std::string::String;
+
+use once_cell::sync::Lazy;
 
 #[derive(Debug, Serialize)]
 struct Process {
@@ -26,39 +29,68 @@ struct ProcessUsage {
     threads_used: u32,
 }
 
-// Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+struct CPUUsage {
+    cpu_usage: f32,
+    instant_cpu_usage: f32,
 }
 
-#[tauri::command]
-fn list_processes() -> String {
-    let child = Command::new("echo")
-        .arg("THIS IS THE ECHO")
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("failed to execute child");
-    let output = child
-        .wait_with_output()
-        .expect("Failed to open echo stdout");
-    let stdout_string = String::from_utf8_lossy(&output.stdout).to_string();
+struct TemporalData {
+    system_elapsed_time: f32,
+    processes: HashMap<i32, f32>,
+}
 
-    format!("Hello from function, {}", stdout_string)
+static mut CLK_TCK: u64 = 100;
+static mut CPU_USAGE: Lazy<TemporalData> = Lazy::new(|| TemporalData {
+    system_elapsed_time: 0.0,
+    processes: HashMap::new(),
+});
+
+fn get_clock_ticks() {
+    let clock_ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+    unsafe {
+        CLK_TCK = clock_ticks as u64;
+    }
+}
+
+fn calculate_instant_usage(pid: i32, cpu_time: u64, system_uptime: f32) -> CPUUsage {
+    let clock_ticks = unsafe { CLK_TCK };
+    let cpu_usage = cpu_time as f32;
+
+    let previous_system_elapsed_time;
+    let mut previous_process_cpu_usage = 0.0;
+
+    unsafe {
+        previous_system_elapsed_time = CPU_USAGE.system_elapsed_time;
+
+        match CPU_USAGE.processes.get(&pid) {
+            Some(previous_usage) => {
+                previous_process_cpu_usage = *previous_usage;
+            }
+            None => {}
+        }
+    }
+
+    let system_elapsed_time = system_uptime - previous_system_elapsed_time;
+    let process_cpu_usage = (cpu_usage - previous_process_cpu_usage) / clock_ticks as f32;
+
+    let instant_cpu_usage = process_cpu_usage / system_elapsed_time;
+
+    CPUUsage {
+        cpu_usage,
+        instant_cpu_usage,
+    }
 }
 
 fn get_process_usage(process_id: i32) -> Option<ProcessUsage> {
-    let cpu_usage_path = format!("/proc/{}/stat", process_id);
+    let stat_file_path = format!("/proc/{}/stat", process_id);
     let status_file_path = format!("/proc/{}/status", process_id);
 
-    let cpu_usage = fs::read_to_string(cpu_usage_path)
-        .ok()?
-        .split_whitespace()
-        .nth(13)?
-        .parse::<u64>()
-        .ok()?;
+    let stat_info = fs::read_to_string(stat_file_path).ok()?;
 
-    let cpu_usage_percentage = cpu_usage as f32 / 100.0;
+    let cpu_utime = stat_info.split_whitespace().nth(13)?.parse::<u64>().ok()?;
+    let cpu_stime = stat_info.split_whitespace().nth(14)?.parse::<u64>().ok()?;
+
+    let cpu_time = cpu_utime + cpu_stime;
 
     let status_content = fs::read_to_string(status_file_path).ok()?;
 
@@ -95,7 +127,7 @@ fn get_process_usage(process_id: i32) -> Option<ProcessUsage> {
         .ok()?;
 
     Some(ProcessUsage {
-        cpu_usage: cpu_usage_percentage,
+        cpu_usage: cpu_time as f32,
         memory_usage,
         user: user_name,
         threads_used,
@@ -105,29 +137,52 @@ fn get_process_usage(process_id: i32) -> Option<ProcessUsage> {
 #[tauri::command]
 fn read_running_processes() -> Vec<Process> {
     let mut processes = Vec::new();
+    let mut current_processes_status: HashMap<i32, f32> = HashMap::new();
 
-    if let Ok(entries) = fs::read_dir("/proc") {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                if let Ok(metadata) = entry.metadata() {
-                    if metadata.is_dir() {
-                        if let Some(process_id) = entry.file_name().to_str() {
-                            if process_id.chars().all(char::is_numeric) {
-                                if let Ok(comm) =
-                                    fs::read_to_string(format!("/proc/{}/comm", process_id))
-                                {
-                                    if let Some(usages) =
-                                        get_process_usage(process_id.parse::<i32>().unwrap())
-                                    {
-                                        let process = Process {
-                                            process_id: process_id.to_string(),
-                                            process_name: comm.trim().to_string(),
-                                            cpu_usage: usages.cpu_usage,
-                                            memory_usage: usages.memory_usage,
-                                            user: usages.user,
-                                            threads_used: usages.threads_used,
-                                        };
-                                        processes.push(process);
+    let system_uptime_path: String = format!("/proc/uptime");
+
+    if let Ok(system_uptime_string) = fs::read_to_string(system_uptime_path) {
+        if let Ok(system_uptime) = system_uptime_string
+            .split_whitespace()
+            .nth(0)
+            .unwrap_or("1")
+            .parse::<f32>()
+        {
+            if let Ok(entries) = fs::read_dir("/proc") {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        if let Ok(metadata) = entry.metadata() {
+                            if metadata.is_dir() {
+                                if let Some(process_id) = entry.file_name().to_str() {
+                                    if process_id.chars().all(char::is_numeric) {
+                                        if let Ok(comm) =
+                                            fs::read_to_string(format!("/proc/{}/comm", process_id))
+                                        {
+                                            if let Some(usages) = get_process_usage(
+                                                process_id.parse::<i32>().unwrap(),
+                                            ) {
+                                                let instant_cpu_usage = calculate_instant_usage(
+                                                    process_id.parse::<i32>().unwrap(),
+                                                    usages.cpu_usage as u64,
+                                                    system_uptime,
+                                                );
+                                                let process = Process {
+                                                    process_id: process_id.to_string(),
+                                                    process_name: comm.trim().to_string(),
+                                                    cpu_usage: instant_cpu_usage.instant_cpu_usage,
+                                                    memory_usage: usages.memory_usage,
+                                                    user: usages.user,
+                                                    threads_used: usages.threads_used,
+                                                };
+                                                processes.push(process);
+
+                                                // create a new hash map to store the cpu usage in the heap
+                                                current_processes_status.insert(
+                                                    process_id.parse::<i32>().unwrap(),
+                                                    instant_cpu_usage.cpu_usage,
+                                                );
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -135,7 +190,14 @@ fn read_running_processes() -> Vec<Process> {
                     }
                 }
             }
+            unsafe {
+                CPU_USAGE.system_elapsed_time = system_uptime;
+            }
         }
+    }
+
+    unsafe {
+        CPU_USAGE.processes = current_processes_status;
     }
 
     processes
@@ -143,8 +205,6 @@ fn read_running_processes() -> Vec<Process> {
 
 #[tauri::command]
 fn send_process_signal(signal: &str, pid: &str) -> String {
-    println!("PID IN RUST {}", pid);
-
     let child = Command::new("kill")
         .arg(format!("-{}", signal))
         .arg(pid)
@@ -195,14 +255,13 @@ fn bind_process(pid: i32, cpu: u32) {
 }
 
 fn main() {
+    get_clock_ticks();
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            greet,
-            list_processes,
             read_running_processes,
             send_process_signal,
             set_process_priority,
-            bind_process
+            bind_process,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

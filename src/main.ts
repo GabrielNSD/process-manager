@@ -1,8 +1,5 @@
 import { invoke } from "@tauri-apps/api/tauri";
-import { Grid, GridOptions } from "ag-grid-community";
-
-let greetInputEl: HTMLInputElement | null;
-let greetMsgEl: HTMLElement | null;
+import { Grid, GridOptions, ColDef } from "ag-grid-community";
 
 let pidInputEl: HTMLInputElement | null;
 let killBtnEl: HTMLElement | null;
@@ -16,18 +13,8 @@ let filterInputEl: HTMLInputElement | null;
 
 let gridObject: Grid | null = null;
 
-async function greet() {
-  if (greetMsgEl && greetInputEl) {
-    // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-    greetMsgEl.textContent = await invoke("greet", {
-      name: greetInputEl.value,
-    });
-  }
-}
-
 async function sendSignal(signal: string) {
   if (pidInputEl && killBtnEl && stopBtnEl && contBtnEl) {
-    console.log("sending signal", pidInputEl.value, signal);
     const list = await invoke("send_process_signal", {
       pid: pidInputEl.value,
       signal: signal,
@@ -38,7 +25,6 @@ async function sendSignal(signal: string) {
 
 async function setPriority() {
   if (pidInputEl && priorityInputEl && priorityBtnEl) {
-    console.log("setting priority", pidInputEl.value);
     await invoke("set_process_priority", {
       pid: parseInt(pidInputEl.value),
       priority: parseInt(priorityInputEl.value),
@@ -65,13 +51,32 @@ type Process = {
   threads_used: number;
 };
 
-const columnDefs = [
-  { field: "process_id" },
-  { field: "process_name" },
-  { field: "cpu_usage" },
-  { field: "memory_usage" },
-  { field: "user" },
-  { field: "threads_used" },
+const columnDefs: ColDef[] = [
+  {
+    headerName: "ID",
+    field: "process_id",
+  },
+  {
+    headerName: "Nome do processo",
+    field: "process_name",
+  },
+  {
+    headerName: "Uso de CPU (%)",
+    field: "cpu_usage",
+    valueFormatter: (params) => (params.value * 100).toFixed(2),
+  },
+  {
+    headerName: "Uso de memória (KB)",
+    field: "memory_usage",
+  },
+  {
+    headerName: "Usuário",
+    field: "user",
+  },
+  {
+    headerName: "Threads usadas",
+    field: "threads_used",
+  },
 ];
 
 let rowData: Process[] = [];
@@ -81,28 +86,20 @@ const gridOptions: GridOptions = {
   rowData: rowData,
   rowSelection: "single",
   animateRows: true,
-  getRowId: (params) => params.data.id,
+  getRowId: (params) => params.data.process_id,
   defaultColDef: { sortable: true },
 };
 
 async function updateRowData() {
-  if (filterInputEl) {
+  if (filterInputEl && gridObject) {
     const list: Process[] = await invoke("read_running_processes", {});
-    const formattedList = list.map((el) => ({ ...el, id: el.process_id }));
-    gridOptions.api?.setRowData(formattedList);
-
-    setTimeout(updateRowData, 1000);
+    gridOptions.api?.setRowData(list);
   }
+
+  setTimeout(updateRowData, 1000);
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  greetInputEl = document.querySelector("#greet-input");
-  greetMsgEl = document.querySelector("#greet-msg");
-  document.querySelector("#greet-form")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    greet();
-  });
-
   filterInputEl = document.querySelector("#filter-input");
 
   updateRowData();
