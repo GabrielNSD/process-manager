@@ -34,7 +34,6 @@ async function setPriority() {
 
 async function setCPU() {
   if (cpuInputEl && cpuBtnEl && pidInputEl) {
-    console.log("setting cpu", pidInputEl.value);
     await invoke("bind_process", {
       pid: parseInt(pidInputEl.value),
       cpu: parseInt(cpuInputEl.value),
@@ -92,7 +91,17 @@ const gridOptions: GridOptions = {
 
 async function updateRowData() {
   if (filterInputEl && gridObject) {
-    const list: Process[] = await invoke("read_running_processes", {});
+    const list: Process[] = (
+      (await invoke("read_running_processes", {})) as Process[]
+    ).filter((el) => {
+      if (filterInputEl?.value) {
+        return JSON.stringify(el)
+          .toLowerCase()
+          .includes(filterInputEl.value.toLowerCase());
+      } else {
+        return true;
+      }
+    });
     gridOptions.api?.setRowData(list);
   }
 
