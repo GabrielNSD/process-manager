@@ -242,14 +242,14 @@ fn bind_process(pid: i32, cpu: u32) {
     }
 
     fn bind_process_to_cpu(pid: pid_t, cpu_id: c_int) -> bool {
-        let mut cpu_set: cpu_set_t = unsafe { std::mem::zeroed() };
+        let mut mask: cpu_set_t = unsafe { std::mem::zeroed() };
 
-        // CPU affinity mask
+        // set CPU affinity mask
         unsafe {
-            CPU_SET(cpu_id as usize, &mut cpu_set);
+            CPU_SET(cpu_id as usize, &mut mask);
         };
 
-        let result = unsafe { sched_setaffinity(pid as i32, CPU_SETSIZE as usize, &cpu_set) };
+        let result = unsafe { sched_setaffinity(pid as i32, CPU_SETSIZE as usize, &mask) };
         result == 0
     }
 }
