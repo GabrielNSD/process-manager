@@ -20,14 +20,14 @@ struct Process {
     process_id: String,
     process_name: String,
     cpu_usage: f32,
-    memory_usage: u64,
+    memory_usage: f64,
     user: String,
     threads_used: u32,
 }
 
 struct ProcessUsage {
     cpu_usage: f32,
-    memory_usage: u64,
+    memory_usage: f64,
     user: String,
     threads_used: u32,
 }
@@ -102,7 +102,7 @@ fn get_process_usage(process_id: i32) -> Option<ProcessUsage> {
         .find(|line| line.starts_with("VmRSS:"))?
         .split_whitespace()
         .nth(1)?
-        .parse::<u64>()
+        .parse::<f64>()
         .ok()?;
 
     let uid_line = status_content
@@ -140,15 +140,6 @@ fn get_process_usage(process_id: i32) -> Option<ProcessUsage> {
 fn read_running_processes_mac() -> Vec<Process> {
     let mut processes = Vec::new();
 
-    let process = Process {
-        process_id: "abc".to_string(),
-        process_name: "name".to_string(),
-        cpu_usage: 10.0,
-        memory_usage: 100,
-        user: "Test".to_string(),
-        threads_used: 3,
-    };
-
     let child = Command::new("ps")
         .arg("aux")
         .stdout(Stdio::piped())
@@ -160,13 +151,33 @@ fn read_running_processes_mac() -> Vec<Process> {
         .expect("Failed to open echo stdout");
     let stdout_string = String::from_utf8_lossy(&output.stdout).to_string();
 
-    // TODO: break this string in lines
-    // each line corresponds to a process
-    // convert each line in a Process
-
-    println!("{}", stdout_string);
-
-    processes.push(process);
+    let lines = stdout_string.lines();
+    for line in lines.skip(1) {
+        let process_id = line.split_whitespace().nth(1).unwrap();
+        let process_name = line.split_whitespace().nth(10).unwrap();
+        let cpu_usage = line
+            .split_whitespace()
+            .nth(2)
+            .unwrap_or("1.0")
+            .parse::<f32>()
+            .unwrap();
+        let memory_usage = line
+            .split_whitespace()
+            .nth(3)
+            .unwrap_or("1.0")
+            .parse::<f64>()
+            .unwrap();
+        let user = line.split_whitespace().nth(1).unwrap().to_string();
+        let process = Process {
+            process_id: process_id.to_string(),
+            process_name: process_name.to_string(),
+            cpu_usage,
+            memory_usage,
+            user,
+            threads_used: 3,
+        };
+        processes.push(process);
+    }
 
     return processes;
 }
