@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/tauri";
+import { OsType, type } from "@tauri-apps/api/os";
 import { Grid, GridOptions, ColDef } from "ag-grid-community";
 
 let pidInputEl: HTMLInputElement | null;
@@ -12,6 +13,8 @@ let cpuBtnEl: HTMLElement | null;
 let filterInputEl: HTMLInputElement | null;
 
 let gridObject: Grid | null = null;
+
+let osType: OsType = "Linux";
 
 async function sendSignal(signal: string) {
   if (pidInputEl && killBtnEl && stopBtnEl && contBtnEl) {
@@ -62,10 +65,10 @@ const columnDefs: ColDef[] = [
   {
     headerName: "Uso de CPU (%)",
     field: "cpu_usage",
-    valueFormatter: (params) => (params.value * 100).toFixed(2),
+    valueFormatter: (params) => (params.value * (osType === 'Darwin' ? 1 : 100)).toFixed(2),
   },
   {
-    headerName: "Uso de memória (KB)",
+    headerName: `Uso de memória`,
     field: "memory_usage",
   },
   {
@@ -105,10 +108,16 @@ async function updateRowData() {
     gridOptions.api?.setRowData(list);
   }
 
-  setTimeout(updateRowData, 1000);
+  setTimeout(updateRowData, 3000);
+}
+
+async function getOsType() {
+  osType = await type();
+  console.log('osType', osType)
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  getOsType()
   filterInputEl = document.querySelector("#filter-input");
 
   updateRowData();

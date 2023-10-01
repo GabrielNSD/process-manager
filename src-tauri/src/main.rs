@@ -1,9 +1,12 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(target_os = "linux")]
 use libc::{
     c_int, cpu_set_t, pid_t, sched_setaffinity, setpriority, CPU_SET, CPU_SETSIZE, PRIO_PROCESS,
 };
+#[cfg(target_os = "macos")]
+use libc::{c_int, pid_t, setpriority, PRIO_PROCESS};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
@@ -17,14 +20,14 @@ struct Process {
     process_id: String,
     process_name: String,
     cpu_usage: f32,
-    memory_usage: u64,
+    memory_usage: f64,
     user: String,
     threads_used: u32,
 }
 
 struct ProcessUsage {
     cpu_usage: f32,
-    memory_usage: u64,
+    memory_usage: f64,
     user: String,
     threads_used: u32,
 }
@@ -99,7 +102,7 @@ fn get_process_usage(process_id: i32) -> Option<ProcessUsage> {
         .find(|line| line.starts_with("VmRSS:"))?
         .split_whitespace()
         .nth(1)?
-        .parse::<u64>()
+        .parse::<f64>()
         .ok()?;
 
     let uid_line = status_content
@@ -134,8 +137,52 @@ fn get_process_usage(process_id: i32) -> Option<ProcessUsage> {
     })
 }
 
-#[tauri::command]
-fn read_running_processes() -> Vec<Process> {
+fn read_running_processes_mac() -> Vec<Process> {
+    let mut processes = Vec::new();
+
+    let child = Command::new("ps")
+        .arg("aux")
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("failed to run ps aux");
+
+    let output = child
+        .wait_with_output()
+        .expect("Failed to open echo stdout");
+    let stdout_string = String::from_utf8_lossy(&output.stdout).to_string();
+
+    let lines = stdout_string.lines();
+    for line in lines.skip(1) {
+        let process_id = line.split_whitespace().nth(1).unwrap();
+        let process_name = line.split_whitespace().nth(10).unwrap();
+        let cpu_usage = line
+            .split_whitespace()
+            .nth(2)
+            .unwrap_or("1.0")
+            .parse::<f32>()
+            .unwrap();
+        let memory_usage = line
+            .split_whitespace()
+            .nth(3)
+            .unwrap_or("1.0")
+            .parse::<f64>()
+            .unwrap();
+        let user = line.split_whitespace().nth(1).unwrap().to_string();
+        let process = Process {
+            process_id: process_id.to_string(),
+            process_name: process_name.to_string(),
+            cpu_usage,
+            memory_usage,
+            user,
+            threads_used: 3,
+        };
+        processes.push(process);
+    }
+
+    return processes;
+}
+
+fn read_running_processes_linux() -> Vec<Process> {
     let mut processes = Vec::new();
     let mut current_processes_status: HashMap<i32, f32> = HashMap::new();
 
@@ -204,6 +251,16 @@ fn read_running_processes() -> Vec<Process> {
 }
 
 #[tauri::command]
+fn read_running_processes() -> Vec<Process> {
+    if cfg!(target_os = "macos") {
+        let processes = read_running_processes_mac();
+        return processes;
+    } else {
+        let processes = read_running_processes_linux();
+        return processes;
+    }
+}
+#[tauri::command]
 fn send_process_signal(signal: &str, pid: &str) -> String {
     let child = Command::new("kill")
         .arg(format!("-{}", signal))
@@ -235,12 +292,16 @@ fn set_process_priority(pid: i32, priority: i32) {
 
 #[tauri::command]
 fn bind_process(pid: i32, cpu: u32) {
-    if bind_process_to_cpu(pid, cpu as i32) {
-        println!("Process bound successfully");
-    } else {
-        println!("Failed to bind process");
-    }
+    // if bind_process_to_cpu(pid, cpu as i32) {
+    //     println!("Process bound successfully");
+    // } else {
+    //     println!("Failed to bind process");
+    // }
+    println!("{} {}", pid, cpu);
+    #[cfg(target_os = "linux")]
+    bind_process_to_cpu(pid, cpu as i32);
 
+    #[cfg(target_os = "linux")]
     fn bind_process_to_cpu(pid: pid_t, cpu_id: c_int) -> bool {
         let mut mask: cpu_set_t = unsafe { std::mem::zeroed() };
 
