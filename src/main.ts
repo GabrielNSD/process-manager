@@ -18,11 +18,10 @@ let osType: OsType = "Linux";
 
 async function sendSignal(signal: string) {
   if (pidInputEl && killBtnEl && stopBtnEl && contBtnEl) {
-    const list = await invoke("send_process_signal", {
+    await invoke("send_process_signal", {
       pid: pidInputEl.value,
       signal: signal,
     });
-    console.log(list);
   }
 }
 
@@ -61,11 +60,14 @@ const columnDefs: ColDef[] = [
   {
     headerName: "Nome do processo",
     field: "process_name",
+    valueFormatter: (params) =>
+      osType === "Darwin" ? params.value.split("/").pop() : params.value,
   },
   {
     headerName: "Uso de CPU (%)",
     field: "cpu_usage",
-    valueFormatter: (params) => (params.value * (osType === 'Darwin' ? 1 : 100)).toFixed(2),
+    valueFormatter: (params) =>
+      (params.value * (osType === "Darwin" ? 1 : 100)).toFixed(2),
   },
   {
     headerName: `Uso de memória`,
@@ -113,11 +115,10 @@ async function updateRowData() {
 
 async function getOsType() {
   osType = await type();
-  console.log('osType', osType)
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  getOsType()
+  getOsType();
   filterInputEl = document.querySelector("#filter-input");
 
   updateRowData();
