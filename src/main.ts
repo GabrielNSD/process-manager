@@ -77,10 +77,11 @@ const columnDefs: ColDef[] = [
     headerName: "Usuário",
     field: "user",
   },
+  (osType !== 'Darwin' ? 
   {
     headerName: "Threads usadas",
     field: "threads_used",
-  },
+  } : {})
 ];
 
 let rowData: Process[] = [];
