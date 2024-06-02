@@ -77,11 +77,12 @@ const columnDefs: ColDef[] = [
     headerName: "Usuário",
     field: "user",
   },
-  (osType !== 'Darwin' ? 
-  {
-    headerName: "Threads usadas",
-    field: "threads_used",
-  } : {})
+  osType !== "Darwin" // TODO: fix this value, it is always linux
+    ? {
+        headerName: "Threads usadas",
+        field: "threads_used",
+      }
+    : {},
 ];
 
 let rowData: Process[] = [];
@@ -97,17 +98,14 @@ const gridOptions: GridOptions = {
 
 async function updateRowData() {
   if (filterInputEl && gridObject) {
-    const list: Process[] = (
-      (await invoke("read_running_processes", {})) as Process[]
-    ).filter((el) => {
-      if (filterInputEl?.value) {
-        return JSON.stringify(el)
-          .toLowerCase()
-          .includes(filterInputEl.value.toLowerCase());
-      } else {
-        return true;
-      }
-    });
+    const processes: Process[] = await invoke("read_running_processes", {});
+    const list = filterInputEl?.value
+      ? processes.filter((el) =>
+          JSON.stringify(el)
+            .toLowerCase()
+            .includes(filterInputEl!.value.toLowerCase()),
+        )
+      : processes;
     gridOptions.api?.setRowData(list);
   }
 

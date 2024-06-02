@@ -23,7 +23,7 @@ struct Process {
     memory_usage: f64,
     user: String,
     threads_used: u32,
-    priority: u32
+    priority: u32,
 }
 
 struct ProcessUsage {
@@ -190,7 +190,8 @@ fn read_running_processes_linux() -> Vec<Process> {
 
     let system_uptime_path: String = format!("/proc/uptime");
 
-    let system_uptime_string = fs::read_to_string(system_uptime_path).expect("Error getting system uptime string");
+    let system_uptime_string =
+        fs::read_to_string(system_uptime_path).expect("Error getting system uptime string");
 
     if let Ok(system_uptime) = system_uptime_string
         .split_whitespace()
@@ -198,52 +199,52 @@ fn read_running_processes_linux() -> Vec<Process> {
         .unwrap_or("1")
         .parse::<f32>()
     {
-       if let Ok(entries) = fs::read_dir("/proc") {
-           for entry in entries {
-               if let Ok(entry) = entry {
-                   if let Ok(metadata) = entry.metadata() {
-                       if metadata.is_dir() {
-                           if let Some(process_id) = entry.file_name().to_str() {
-                               if process_id.chars().all(char::is_numeric) {
-                                   if let Ok(comm) =
-                                       fs::read_to_string(format!("/proc/{}/comm", process_id))
-                                   {
-                                       if let Some(usages) = get_process_usage(
-                                           process_id.parse::<i32>().unwrap(),
-                                       ) {
-                                           let instant_cpu_usage = calculate_instant_usage(
-                                               process_id.parse::<i32>().unwrap(),
-                                               usages.cpu_usage as u64,
-                                               system_uptime,
-                                           );
-                                           let process = Process {
-                                               process_id: process_id.to_string(),
-                                               process_name: comm.trim().to_string(),
-                                               cpu_usage: instant_cpu_usage.instant_cpu_usage,
-                                               memory_usage: usages.memory_usage,
-                                               user: usages.user,
-                                               threads_used: usages.threads_used,
-                                               priority: 0 //TODO: find a way to get priority
-                                           };
-                                           processes.push(process);
+        if let Ok(entries) = fs::read_dir("/proc") {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    if let Ok(metadata) = entry.metadata() {
+                        if metadata.is_dir() {
+                            if let Some(process_id) = entry.file_name().to_str() {
+                                if process_id.chars().all(char::is_numeric) {
+                                    if let Ok(comm) =
+                                        fs::read_to_string(format!("/proc/{}/comm", process_id))
+                                    {
+                                        if let Some(usages) =
+                                            get_process_usage(process_id.parse::<i32>().unwrap())
+                                        {
+                                            let instant_cpu_usage = calculate_instant_usage(
+                                                process_id.parse::<i32>().unwrap(),
+                                                usages.cpu_usage as u64,
+                                                system_uptime,
+                                            );
+                                            let process = Process {
+                                                process_id: process_id.to_string(),
+                                                process_name: comm.trim().to_string(),
+                                                cpu_usage: instant_cpu_usage.instant_cpu_usage,
+                                                memory_usage: usages.memory_usage,
+                                                user: usages.user,
+                                                threads_used: usages.threads_used,
+                                                priority: 0, //TODO: find a way to get priority
+                                            };
+                                            processes.push(process);
 
-                                           // create a new hash map to store the cpu usage in the heap
-                                           current_processes_status.insert(
-                                               process_id.parse::<i32>().unwrap(),
-                                               instant_cpu_usage.cpu_usage,
-                                           );
-                                       }
-                                   }
-                               }
-                           }
-                       }
-                   }
-               }
-           }
-       }
-       unsafe {
-           CPU_USAGE.system_elapsed_time = system_uptime;
-       }
+                                            // create a new hash map to store the cpu usage in the heap
+                                            current_processes_status.insert(
+                                                process_id.parse::<i32>().unwrap(),
+                                                instant_cpu_usage.cpu_usage,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        unsafe {
+            CPU_USAGE.system_elapsed_time = system_uptime;
+        }
     }
 
     unsafe {
@@ -296,11 +297,10 @@ fn set_process_priority(pid: i32, priority: i32) {
 }
 
 #[tauri::command]
+#[cfg(target_os = "linux")]
 fn bind_process(pid: i32, cpu: u32) {
-    #[cfg(target_os = "linux")]
     bind_process_to_cpu(pid, cpu as i32);
 
-    #[cfg(target_os = "linux")]
     fn bind_process_to_cpu(pid: pid_t, cpu_id: c_int) -> bool {
         let mut mask: cpu_set_t = unsafe { std::mem::zeroed() };
 
@@ -314,6 +314,7 @@ fn bind_process(pid: i32, cpu: u32) {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn main() {
     get_clock_ticks();
     tauri::Builder::default()
@@ -322,6 +323,19 @@ fn main() {
             send_process_signal,
             set_process_priority,
             bind_process,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+#[cfg(target_os = "macos")]
+fn main() {
+    get_clock_ticks();
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            read_running_processes,
+            send_process_signal,
+            set_process_priority,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
