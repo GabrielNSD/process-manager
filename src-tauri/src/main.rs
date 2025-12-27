@@ -138,44 +138,56 @@ fn get_process_usage(process_id: i32) -> Option<ProcessUsage> {
     })
 }
 
-fn read_running_processes_mac() -> Vec<Process> {
-    let mut processes = Vec::new();
-
-    let child = Command::new("ps")
-        .arg("aux")
+fn command_to_string(command: &str, args: Vec<&str>) -> String {
+    let child = Command::new(command)
+        .args(args)
         .stdout(Stdio::piped())
         .spawn()
-        .expect("failed to run ps aux");
+        .expect("Failed to run command");
 
-    let output = child
-        .wait_with_output()
-        .expect("Failed to open echo stdout");
-    let stdout_string = String::from_utf8_lossy(&output.stdout).to_string();
+    let output = child.wait_with_output().expect("failed to open stdout");
+
+    String::from_utf8_lossy(&output.stdout).to_string()
+}
+#[tauri::command]
+#[cfg(target_os = "macos")]
+fn read_running_processes() -> Vec<Process> {
+    let mut processes = Vec::new();
+
+    let args = vec!["aux"];
+    let stdout_string = command_to_string("ps", args);
 
     let lines = stdout_string.lines();
+    let threads = count_threads_per_process();
+    let total_memory = command_to_string("sysctl", vec!["-n", "hw.memsize"])
+        .trim()
+        .parse::<f64>()
+        .unwrap_or(1.0);
+    let memory_in_mb = total_memory / (1000000.0);
     for line in lines.skip(1) {
-        let process_id = line.split_whitespace().nth(1).unwrap();
-        let process_name = line.split_whitespace().nth(10).unwrap();
+        let process_id = line.split_whitespace().nth(1).unwrap_or("0").to_string();
+        let threads_used = threads.get(&process_id).copied().unwrap_or(3);
+        let process_name = line.split_whitespace().nth(10).unwrap_or("").to_string();
         let cpu_usage = line
             .split_whitespace()
             .nth(2)
             .unwrap_or("1.0")
             .parse::<f32>()
-            .unwrap();
+            .unwrap_or(0.0);
         let memory_usage = line
             .split_whitespace()
             .nth(3)
             .unwrap_or("1.0")
             .parse::<f64>()
-            .unwrap();
+            .unwrap_or(0.0);
         let user = line.split_whitespace().nth(1).unwrap().to_string();
         let process = Process {
-            process_id: process_id.to_string(),
-            process_name: process_name.to_string(),
+            process_id,
+            process_name,
             cpu_usage,
-            memory_usage,
+            memory_usage: (memory_in_mb * memory_usage) / 100.0,
             user,
-            threads_used: 3,
+            threads_used,
             priority: 0,
         };
         processes.push(process);
@@ -184,7 +196,37 @@ fn read_running_processes_mac() -> Vec<Process> {
     return processes;
 }
 
-fn read_running_processes_linux() -> Vec<Process> {
+fn count_threads_per_process() -> HashMap<String, u32> {
+    let mut result = HashMap::new();
+    let args = vec!["aux", "-M"];
+    let stdout_string = command_to_string("ps", args);
+
+    let lines = stdout_string.lines();
+
+    for line in lines.skip(1) {
+        let line_result = line.split_whitespace().nth(1);
+
+        match line_result {
+            Some(id) => {
+                if id == "0.0" {
+                    let fallback_id = line.split_whitespace().nth(0).unwrap_or("0"); // subsequent lines does not have the user id on the first position
+                    *result.entry(fallback_id.to_string()).or_insert(0) += 1;
+                } else {
+                    *result.entry(id.to_string()).or_insert(0) += 1;
+                }
+            }
+            None => {
+                println!("No result");
+            }
+        }
+    }
+
+    result
+}
+
+#[tauri::command]
+#[cfg(target_os = "linux")]
+fn read_running_processes() -> Vec<Process> {
     let mut processes = Vec::new();
     let mut current_processes_status: HashMap<i32, f32> = HashMap::new();
 
@@ -255,18 +297,6 @@ fn read_running_processes_linux() -> Vec<Process> {
 }
 
 #[tauri::command]
-fn read_running_processes() -> Vec<Process> {
-    if cfg!(target_os = "macos") {
-        let processes = read_running_processes_mac();
-        return processes;
-    } else if cfg!(target_os = "linux") {
-        let processes = read_running_processes_linux();
-        return processes;
-    } else {
-        panic!("OS not supported");
-    }
-}
-#[tauri::command]
 fn send_process_signal(signal: &str, pid: &str) -> String {
     let child = Command::new("kill")
         .arg(format!("-{}", signal))
@@ -314,7 +344,12 @@ fn bind_process(pid: i32, cpu: u32) {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[tauri::command]
+#[cfg(target_os = "macos")]
+fn bind_process(pid: i32, cpu: u32) {
+    println!("trying to bind process {} to cpu: {}", pid, cpu)
+}
+
 fn main() {
     get_clock_ticks();
     tauri::Builder::default()
@@ -323,19 +358,6 @@ fn main() {
             send_process_signal,
             set_process_priority,
             bind_process,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
-}
-
-#[cfg(target_os = "macos")]
-fn main() {
-    get_clock_ticks();
-    tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![
-            read_running_processes,
-            send_process_signal,
-            set_process_priority,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

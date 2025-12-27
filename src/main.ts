@@ -72,17 +72,16 @@ const columnDefs: ColDef[] = [
   {
     headerName: `Uso de memória`,
     field: "memory_usage",
+    valueFormatter: (params) => params.value.toFixed(2),
   },
   {
     headerName: "Usuário",
     field: "user",
   },
-  osType !== "Darwin" // TODO: fix this value, it is always linux
-    ? {
-        headerName: "Threads usadas",
-        field: "threads_used",
-      }
-    : {},
+  {
+    headerName: "Threads usadas",
+    field: "threads_used",
+  },
 ];
 
 let rowData: Process[] = [];
